@@ -883,10 +883,11 @@ static string WaitForExportJson(DateTime triggerTime, string keyword, TimeSpan t
             .Where(Directory.Exists)
             .SelectMany(dir =>
             {
-                try { return new DirectoryInfo(dir).GetFiles("*.json"); }
+                try { return new DirectoryInfo(dir).GetFiles("*.*"); }
                 catch { return Array.Empty<FileInfo>(); }
             })
             .Where(file => file.LastWriteTime >= triggerTime)
+            .Where(IsReadableExportCandidate)
             .OrderByDescending(file => file.LastWriteTime)
             .FirstOrDefault(file =>
             {
@@ -899,7 +900,7 @@ static string WaitForExportJson(DateTime triggerTime, string keyword, TimeSpan t
             });
         if (latest != null)
         {
-            Log($"WAIT_JSON_DONE keyword={keyword}; loops={loops}; file={latest.FullName}");
+            Log($"WAIT_JSON_DONE keyword={keyword}; loops={loops}; extension={latest.Extension}; file={latest.FullName}");
             return latest.FullName;
         }
         if (loops % 10 == 0)
@@ -910,6 +911,22 @@ static string WaitForExportJson(DateTime triggerTime, string keyword, TimeSpan t
     }
     Log($"WAIT_JSON_TIMEOUT keyword={keyword}; loops={loops}");
     throw new TimeoutException("Timed out waiting for export json: " + keyword);
+}
+
+static bool IsReadableExportCandidate(FileInfo file)
+{
+    if (file == null || !file.Exists || file.Length <= 0 || file.Length > 20 * 1024 * 1024)
+    {
+        return false;
+    }
+
+    string extension = (file.Extension ?? "").ToLowerInvariant();
+    if (extension == ".crdownload" || extension == ".tmp" || extension == ".part")
+    {
+        return false;
+    }
+
+    return true;
 }
 
 static List<string> GetCandidateDownloadDirectories()

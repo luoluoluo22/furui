@@ -76,17 +76,21 @@ async function exportSearchResults(rawKeyword, options = {}) {
     };
 
     const filename = buildJsonFilename(keyword);
-    const downloadUrl = `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(payload, null, 2))}`;
+    const jsonText = JSON.stringify(payload, null, 2);
+    const downloadUrl = `data:application/json;charset=utf-8;base64,${encodeBase64Utf8(jsonText)}`;
 
-    await chrome.downloads.download({
+    const downloadId = await chrome.downloads.download({
       url: downloadUrl,
       filename,
       saveAs: false,
       conflictAction: "uniquify"
     });
+    const downloadResult = await waitForDownloadCompletion(downloadId, 10000);
 
     return {
-      filename,
+      filename: downloadResult.filename || filename,
+      suggestedFilename: filename,
+      downloadId,
       searchUrl,
       count: payload.count,
       downloadedCount: payload.results.filter((item) => item.downloaded).length,
@@ -467,6 +471,15 @@ function buildJsonFilename(keyword) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const safeKeyword = sanitizePathPart(keyword) || "keyword";
   return `douyin-json/${safeKeyword}-${timestamp}.json`;
+}
+
+function encodeBase64Utf8(value) {
+  const bytes = new TextEncoder().encode(String(value || ""));
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
 }
 
 function buildVideoFilename({ videoId, title, author }) {

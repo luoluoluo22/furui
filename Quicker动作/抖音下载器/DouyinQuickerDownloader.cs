@@ -597,7 +597,7 @@ static string WaitForExportJson(DateTime triggerTime, TimeSpan timeout)
             {
                 try
                 {
-                    return new DirectoryInfo(dir).GetFiles("*.json");
+                    return new DirectoryInfo(dir).GetFiles("*.*");
                 }
                 catch
                 {
@@ -605,22 +605,46 @@ static string WaitForExportJson(DateTime triggerTime, TimeSpan timeout)
                 }
             })
             .Where(file => file.LastWriteTime >= triggerTime)
+            .Where(IsReadableExportCandidate)
             .OrderByDescending(file => file.LastWriteTime)
-            .FirstOrDefault();
+            .FirstOrDefault(file =>
+            {
+                try
+                {
+                    string raw = File.ReadAllText(file.FullName, Encoding.UTF8);
+                    return raw.Contains("\"videoUrl\"");
+                }
+                catch
+                {
+                    return false;
+                }
+            });
 
         if (latest != null)
         {
-            string raw = File.ReadAllText(latest.FullName, Encoding.UTF8);
-            if (raw.Contains("\"videoUrl\""))
-            {
-                return latest.FullName;
-            }
+            return latest.FullName;
         }
 
         System.Threading.Thread.Sleep(1000);
     }
 
     throw new TimeoutException("Timed out waiting for export json.");
+}
+
+static bool IsReadableExportCandidate(FileInfo file)
+{
+    if (file == null || !file.Exists || file.Length <= 0 || file.Length > 20 * 1024 * 1024)
+    {
+        return false;
+    }
+
+    string extension = (file.Extension ?? "").ToLowerInvariant();
+    if (extension == ".crdownload" || extension == ".tmp" || extension == ".part")
+    {
+        return false;
+    }
+
+    return true;
 }
 
 static List<string> GetCandidateDownloadDirectories()
