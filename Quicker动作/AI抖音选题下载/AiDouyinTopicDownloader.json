@@ -110,5 +110,11 @@
   ],
   "Menus": {
     "config": "[fa:Regular_Sun]设置"
-  }
+  },
+  "References": [
+    "PresentationCore.dll",
+    "PresentationFramework.dll",
+    "WindowsBase.dll",
+    "System.Xaml.dll"
+  ]
 }
