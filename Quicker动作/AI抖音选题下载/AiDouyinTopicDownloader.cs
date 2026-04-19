@@ -11,10 +11,14 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using Quicker.Public;
 
+static readonly string LogDirectory = @"D:\chajian\Quicker动作\AI抖音选题下载";
+static readonly string LogFilePath = Path.Combine(LogDirectory, "AiDouyinTopicDownloader.log");
+
 public static string Exec(IStepContext context)
 {
     try
     {
+        Log("ACTION_START");
         string apiUrl = ReadVar(context, "apiBaseUrl", "https://new.12ai.org/v1/chat/completions");
         string apiKey = ReadVar(context, "apiKey", "");
         string model = ReadVar(context, "model", "gemini-3.1-flash-lite-preview");
@@ -23,10 +27,12 @@ public static string Exec(IStepContext context)
         string outputDir = ReadVar(context, "outputDir", @"D:\chajian\downloads");
         string extensionId = ReadVar(context, "extensionId", "");
         int maxPerKeyword = Math.Max(1, ToInt(context.GetVarValue("maxResultsPerKeyword"), 8));
+        Log($"CONFIG_LOADED apiUrl={apiUrl}; model={model}; outputDir={outputDir}; maxPerKeyword={maxPerKeyword}; hasApiKey={!string.IsNullOrWhiteSpace(apiKey)}");
 
         var setup = ShowSetupDialog(apiUrl, apiKey, model, prompt, script, outputDir, maxPerKeyword);
         if (setup == null)
         {
+            Log("SETUP_CANCELLED");
             return "CANCELLED";
         }
 
@@ -37,13 +43,16 @@ public static string Exec(IStepContext context)
         script = setup["script"].Trim();
         outputDir = setup["outputDir"].Trim();
         maxPerKeyword = Math.Max(1, ToInt(setup["maxPerKeyword"], maxPerKeyword));
+        Log($"SETUP_CONFIRMED apiUrl={apiUrl}; model={model}; outputDir={outputDir}; maxPerKeyword={maxPerKeyword}; scriptLength={script.Length}; promptLength={prompt.Length}");
 
         if (string.IsNullOrWhiteSpace(apiUrl) || string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(model))
         {
+            Log("VALIDATION_FAILED missing apiUrl/apiKey/model");
             return "ERROR: API 地址、密钥、模型 ID 都不能为空。";
         }
         if (string.IsNullOrWhiteSpace(script))
         {
+            Log("VALIDATION_FAILED empty script");
             return "ERROR: 脚本内容不能为空。";
         }
         if (string.IsNullOrWhiteSpace(outputDir))
@@ -59,34 +68,49 @@ public static string Exec(IStepContext context)
         context.SetVarValue("outputDir", outputDir);
         context.SetVarValue("maxResultsPerKeyword", maxPerKeyword);
 
-        List<string> keywords = ShowKeywordSelection(CallAiForKeywords(apiUrl, apiKey, model, prompt, script));
+        Log("AI_KEYWORD_REQUEST_START");
+        List<string> aiKeywords = CallAiForKeywords(apiUrl, apiKey, model, prompt, script);
+        Log($"AI_KEYWORD_REQUEST_DONE count={aiKeywords.Count}; keywords={string.Join("|", aiKeywords)}");
+
+        List<string> keywords = ShowKeywordSelection(aiKeywords);
         if (keywords == null)
         {
+            Log("KEYWORD_SELECTION_CANCELLED");
             return "CANCELLED";
         }
         if (keywords.Count == 0)
         {
+            Log("KEYWORD_SELECTION_EMPTY");
             return "ERROR: 未选择关键词。";
         }
+        Log($"KEYWORD_SELECTION_DONE count={keywords.Count}; keywords={string.Join("|", keywords)}");
 
+        Log("RESOLVE_EXTENSION_START");
         extensionId = ResolveExtensionId(extensionId);
         if (string.IsNullOrWhiteSpace(extensionId))
         {
+            Log("RESOLVE_EXTENSION_FAILED");
             return "ERROR: failed to resolve extension id for Douyin Keyword Search.";
         }
         context.SetVarValue("extensionId", extensionId);
+        Log($"RESOLVE_EXTENSION_DONE extensionId={extensionId}");
 
         Directory.CreateDirectory(outputDir);
         var videos = new List<Dictionary<string, string>>();
         foreach (string keyword in keywords)
         {
+            Log($"EXPORT_START keyword={keyword}");
             DateTime startedAt = DateTime.Now;
             string url = $"chrome-extension://{extensionId}/trigger.html?keyword={Uri.EscapeDataString(keyword)}&downloadVideos=0&active=0&closeTab=1";
             OpenEdge(url);
+            Log($"EXPORT_TRIGGER_OPENED keyword={keyword}; url={url}");
             string jsonPath = WaitForExportJson(startedAt, keyword, TimeSpan.FromSeconds(120));
+            Log($"EXPORT_JSON_FOUND keyword={keyword}; jsonPath={jsonPath}");
             string raw = File.ReadAllText(jsonPath, Encoding.UTF8);
+            List<Dictionary<string, string>> extracted = ExtractItems(raw, keyword).Take(maxPerKeyword).ToList();
+            Log($"EXPORT_PARSE_DONE keyword={keyword}; extracted={extracted.Count}; rawLength={raw.Length}");
 
-            foreach (var item in ExtractItems(raw, keyword).Take(maxPerKeyword))
+            foreach (var item in extracted)
             {
                 item["sourceJsonPath"] = jsonPath;
                 if (!videos.Any(existing => Get(existing, "videoId") == Get(item, "videoId")))
@@ -94,22 +118,28 @@ public static string Exec(IStepContext context)
                     videos.Add(item);
                 }
             }
+            Log($"EXPORT_DONE keyword={keyword}; totalUniqueVideos={videos.Count}");
         }
 
         if (videos.Count == 0)
         {
+            Log("VIDEO_COLLECTION_EMPTY");
             return "ERROR: 未抓取到可下载的视频结果。";
         }
 
+        Log($"VIDEO_SELECTION_SHOW count={videos.Count}");
         List<Dictionary<string, string>> selected = ShowVideoSelection(videos);
         if (selected == null)
         {
+            Log("VIDEO_SELECTION_CANCELLED");
             return "CANCELLED";
         }
         if (selected.Count == 0)
         {
+            Log("VIDEO_SELECTION_EMPTY");
             return "ERROR: 未选择要下载的视频。";
         }
+        Log($"VIDEO_SELECTION_DONE count={selected.Count}; ids={string.Join("|", selected.Select(item => Get(item, "videoId")))}");
 
         var downloaded = new List<string>();
         var progress = CreateProgressWindow(selected.Count);
@@ -120,12 +150,14 @@ public static string Exec(IStepContext context)
                 var item = selected[i];
                 string name = BuildBaseFileName(Get(item, "sourceKeyword"), item);
                 string videoPath = Path.Combine(outputDir, name + ".mp4");
+                Log($"DOWNLOAD_START index={i + 1}/{selected.Count}; videoId={Get(item, "videoId")}; path={videoPath}");
                 UpdateProgress(progress, i, selected.Count, name);
                 DownloadVideo(Get(item, "videoUrl"), Get(item, "detailUrl"), videoPath,
                     (received, total) => UpdateProgressValue(progress, i, selected.Count, name, received, total));
                 WriteMetadataJson(item, Path.Combine(outputDir, name + ".json"));
                 downloaded.Add(videoPath);
                 UpdateProgress(progress, i + 1, selected.Count, name);
+                Log($"DOWNLOAD_DONE index={i + 1}/{selected.Count}; videoId={Get(item, "videoId")}; path={videoPath}");
             }
         }
         finally
@@ -136,6 +168,7 @@ public static string Exec(IStepContext context)
         string summary = $"OK: keywords={keywords.Count}; videos={selected.Count}; downloaded={downloaded.Count}";
         context.SetVarValue("rtn", summary);
         context.SetVarValue("text", string.Join(Environment.NewLine, downloaded));
+        Log($"ACTION_DONE {summary}");
 
         Application.Current.Dispatcher.Invoke(() =>
         {
@@ -146,6 +179,7 @@ public static string Exec(IStepContext context)
     }
     catch (Exception ex)
     {
+        Log("ACTION_ERROR " + ex);
         context.SetVarValue("errMessage", ex.ToString());
         return "ERROR: " + ex.Message;
     }
@@ -459,6 +493,7 @@ static string SaveCoverToTemp(string url, string videoId)
 {
     if (string.IsNullOrWhiteSpace(url))
     {
+        Log($"COVER_SKIP emptyUrl videoId={videoId}");
         return "";
     }
     try
@@ -469,9 +504,11 @@ static string SaveCoverToTemp(string url, string videoId)
         string path = Path.Combine(dir, safeName + ".jpg");
         if (File.Exists(path) && new FileInfo(path).Length > 0)
         {
+            Log($"COVER_CACHE_HIT videoId={videoId}; path={path}");
             return path;
         }
 
+        Log($"COVER_DOWNLOAD_START videoId={videoId}; url={url}");
         ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
         HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
         request.Method = "GET";
@@ -487,10 +524,13 @@ static string SaveCoverToTemp(string url, string videoId)
         {
             source.CopyTo(target);
         }
-        return File.Exists(path) && new FileInfo(path).Length > 0 ? path : "";
+        string result = File.Exists(path) && new FileInfo(path).Length > 0 ? path : "";
+        Log($"COVER_DOWNLOAD_DONE videoId={videoId}; success={!string.IsNullOrWhiteSpace(result)}; path={result}");
+        return result;
     }
-    catch
+    catch (Exception ex)
     {
+        Log($"COVER_DOWNLOAD_ERROR videoId={videoId}; error={ex.Message}");
         return "";
     }
 }
@@ -522,6 +562,7 @@ static List<string> CallAiForKeywords(string apiUrl, string apiKey, string model
     ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
     string body = "{\"model\":\"" + EscapeJson(model) + "\",\"temperature\":0.3,\"messages\":[{\"role\":\"system\",\"content\":\"" + EscapeJson(prompt) + "\"},{\"role\":\"user\",\"content\":\"" + EscapeJson(script) + "\"}]}";
     byte[] payload = Encoding.UTF8.GetBytes(body);
+    Log($"AI_HTTP_PREPARED url={apiUrl}; model={model}; payloadBytes={payload.Length}");
     HttpWebRequest request = (HttpWebRequest)WebRequest.Create(apiUrl);
     request.Method = "POST";
     request.ContentType = "application/json";
@@ -534,6 +575,7 @@ static List<string> CallAiForKeywords(string apiUrl, string apiKey, string model
     {
         stream.Write(payload, 0, payload.Length);
     }
+    Log("AI_HTTP_SENT");
 
     string responseText;
     try
@@ -544,6 +586,7 @@ static List<string> CallAiForKeywords(string apiUrl, string apiKey, string model
         {
             responseText = reader.ReadToEnd();
         }
+        Log($"AI_HTTP_RESPONSE length={responseText.Length}");
     }
     catch (WebException ex)
     {
@@ -556,14 +599,17 @@ static List<string> CallAiForKeywords(string apiUrl, string apiKey, string model
                 errorText = reader.ReadToEnd();
             }
         }
+        Log($"AI_HTTP_ERROR message={ex.Message}; response={errorText}");
         throw new InvalidOperationException("AI 请求失败：" + ex.Message + (string.IsNullOrWhiteSpace(errorText) ? "" : "\n" + errorText));
     }
 
     List<string> keywords = ParseKeywords(ExtractAiContent(responseText));
     if (keywords.Count == 0)
     {
+        Log($"AI_PARSE_EMPTY response={responseText}");
         throw new InvalidOperationException("AI 没有返回可解析的关键词。原始响应：" + responseText);
     }
+    Log($"AI_PARSE_DONE count={keywords.Count}");
     return keywords;
 }
 
@@ -715,10 +761,14 @@ static void OpenEdge(string url)
 
 static string WaitForExportJson(DateTime triggerTime, string keyword, TimeSpan timeout)
 {
+    Log($"WAIT_JSON_START keyword={keyword}; timeoutSeconds={timeout.TotalSeconds}");
     List<string> dirs = GetCandidateDownloadDirectories();
+    Log($"WAIT_JSON_DIRS keyword={keyword}; dirs={string.Join("|", dirs)}");
     DateTime deadline = DateTime.Now.Add(timeout);
+    int loops = 0;
     while (DateTime.Now < deadline)
     {
+        loops++;
         FileInfo latest = dirs
             .Where(Directory.Exists)
             .SelectMany(dir =>
@@ -739,10 +789,16 @@ static string WaitForExportJson(DateTime triggerTime, string keyword, TimeSpan t
             });
         if (latest != null)
         {
+            Log($"WAIT_JSON_DONE keyword={keyword}; loops={loops}; file={latest.FullName}");
             return latest.FullName;
+        }
+        if (loops % 10 == 0)
+        {
+            Log($"WAIT_JSON_STILL_WAITING keyword={keyword}; loops={loops}");
         }
         System.Threading.Thread.Sleep(1000);
     }
+    Log($"WAIT_JSON_TIMEOUT keyword={keyword}; loops={loops}");
     throw new TimeoutException("Timed out waiting for export json: " + keyword);
 }
 
@@ -785,6 +841,7 @@ static List<Dictionary<string, string>> ExtractItems(string rawText, string keyw
 {
     var items = new List<Dictionary<string, string>>();
     MatchCollection matches = Regex.Matches(rawText ?? "", "\"videoId\"\\s*:\\s*\"(?<videoId>\\d+)\"");
+    Log($"EXTRACT_ITEMS_START keyword={keyword}; matches={matches.Count}");
     for (int i = 0; i < matches.Count; i++)
     {
         int start = matches[i].Index;
@@ -808,6 +865,7 @@ static List<Dictionary<string, string>> ExtractItems(string rawText, string keyw
             ["rawObject"] = block.Trim()
         });
     }
+    Log($"EXTRACT_ITEMS_DONE keyword={keyword}; usable={items.Count}");
     return items;
 }
 
@@ -887,6 +945,7 @@ static void CloseProgressWindow(Dictionary<string, object> progress)
 
 static void DownloadVideo(string url, string referer, string destination, Action<long, long> progress)
 {
+    Log($"HTTP_VIDEO_REQUEST_START destination={destination}; referer={referer}; urlLength={(url ?? "").Length}");
     HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
     request.Method = "GET";
     request.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
@@ -900,6 +959,7 @@ static void DownloadVideo(string url, string referer, string destination, Action
     using (Stream source = response.GetResponseStream())
     using (FileStream target = File.Open(destination, FileMode.Create, FileAccess.Write, FileShare.None))
     {
+        Log($"HTTP_VIDEO_RESPONSE status={(int)response.StatusCode}; contentLength={response.ContentLength}; destination={destination}");
         long total = response.ContentLength > 0 ? response.ContentLength : -1;
         long received = 0;
         byte[] buffer = new byte[1024 * 256];
@@ -910,6 +970,7 @@ static void DownloadVideo(string url, string referer, string destination, Action
             received += read;
             progress?.Invoke(received, total);
         }
+        Log($"HTTP_VIDEO_REQUEST_DONE bytes={received}; destination={destination}");
     }
 }
 
@@ -1016,6 +1077,23 @@ static string EscapeHtml(string value)
         .Replace("\"", "&quot;")
         .Replace("<", "&lt;")
         .Replace(">", "&gt;");
+}
+
+static void Log(string message)
+{
+    try
+    {
+        if (!Directory.Exists(LogDirectory))
+        {
+            return;
+        }
+
+        string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + " " + (message ?? "");
+        File.AppendAllText(LogFilePath, line + Environment.NewLine, new UTF8Encoding(false));
+    }
+    catch
+    {
+    }
 }
 
 static string DefaultPrompt()
