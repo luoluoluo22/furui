@@ -11,10 +11,6 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using Quicker.Public;
 
-static readonly string LogDirectory = @"D:\chajian\Quicker动作\AI抖音选题下载";
-static readonly string LogFilePath = Path.Combine(LogDirectory, "AiDouyinTopicDownloader.log");
-static readonly string LocalSettingsPath = Path.Combine(LogDirectory, "AiDouyinTopicDownloader.local");
-
 public static string Exec(IStepContext context)
 {
     try
@@ -1041,12 +1037,12 @@ static Dictionary<string, string> LoadLocalSettings()
     var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     try
     {
-        if (!Directory.Exists(LogDirectory) || !File.Exists(LocalSettingsPath))
+        if (!Directory.Exists(GetLogDirectory()) || !File.Exists(GetLocalSettingsPath()))
         {
             return values;
         }
 
-        foreach (string line in File.ReadAllLines(LocalSettingsPath, Encoding.UTF8))
+        foreach (string line in File.ReadAllLines(GetLocalSettingsPath(), Encoding.UTF8))
         {
             int index = line.IndexOf('=');
             if (index <= 0)
@@ -1085,7 +1081,7 @@ static void SaveLocalSettings(string apiUrl, string apiKey, string model, string
 {
     try
     {
-        if (!Directory.Exists(LogDirectory))
+        if (!Directory.Exists(GetLogDirectory()))
         {
             return;
         }
@@ -1099,7 +1095,7 @@ static void SaveLocalSettings(string apiUrl, string apiKey, string model, string
             SettingLine("outputDir", outputDir),
             SettingLine("maxResultsPerKeyword", Convert.ToString(maxPerKeyword))
         };
-        File.WriteAllLines(LocalSettingsPath, lines, new UTF8Encoding(false));
+        File.WriteAllLines(GetLocalSettingsPath(), lines, new UTF8Encoding(false));
     }
     catch (Exception ex)
     {
@@ -1176,17 +1172,32 @@ static string EscapeHtml(string value)
         .Replace(">", "&gt;");
 }
 
+static string GetLogDirectory()
+{
+    return @"D:\chajian\Quicker动作\AI抖音选题下载";
+}
+
+static string GetLogFilePath()
+{
+    return Path.Combine(GetLogDirectory(), "AiDouyinTopicDownloader.log");
+}
+
+static string GetLocalSettingsPath()
+{
+    return Path.Combine(GetLogDirectory(), "AiDouyinTopicDownloader.local");
+}
+
 static void Log(string message)
 {
     try
     {
-        if (!Directory.Exists(LogDirectory))
+        if (!Directory.Exists(GetLogDirectory()))
         {
             return;
         }
 
         string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + " " + (message ?? "");
-        File.AppendAllText(LogFilePath, line + Environment.NewLine, new UTF8Encoding(false));
+        File.AppendAllText(GetLogFilePath(), line + Environment.NewLine, new UTF8Encoding(false));
     }
     catch
     {
