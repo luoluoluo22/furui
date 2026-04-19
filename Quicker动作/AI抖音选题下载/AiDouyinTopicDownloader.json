@@ -1,0 +1,114 @@
+﻿{
+  "ActionId": "abe5a66c-41e8-41af-8a21-5f1b92dceeb1",
+  "SharedActionId": "00000000-0000-0000-0000-000000000000",
+  "Title": "AI抖音选题下载",
+  "Description": "输入脚本后调用 OpenAI 兼容第三方 AI 生成抖音搜索关键词，支持关键词多选、封面多选，并下载选中视频到指定目录。",
+  "Keywords": "ai,douyin,抖音,关键词,封面,下载,gemini",
+  "ChangeLog": "v0.1.0 初始版本：支持 AI 关键词、关键词多选、封面多选和本地下载。",
+  "ShareUrl": "",
+  "Icon": "fa:Solid_Robot:#FF5C35",
+  "Variables": [
+    {
+      "Type": 0,
+      "Key": "apiBaseUrl",
+      "DefaultValue": "https://new.12ai.org/v1/chat/completions",
+      "SaveState": true,
+      "IsInput": false,
+      "Desc": "OpenAI 兼容 chat/completions API 地址"
+    },
+    {
+      "Type": 0,
+      "Key": "apiKey",
+      "DefaultValue": "",
+      "SaveState": true,
+      "IsInput": false,
+      "Desc": "第三方 AI API 密钥，本地填写，不建议分享"
+    },
+    {
+      "Type": 0,
+      "Key": "model",
+      "DefaultValue": "gemini-3.1-flash-lite-preview",
+      "SaveState": true,
+      "IsInput": false,
+      "Desc": "模型 ID"
+    },
+    {
+      "Type": 0,
+      "Key": "systemPrompt",
+      "DefaultValue": "你是短视频搜索选题助手。请根据用户脚本提炼适合在抖音搜索素材的中文关键词。要求：1. 返回 6 到 12 个关键词；2. 每个关键词 2 到 12 个中文字符，尽量贴近真实用户搜索；3. 不要解释；4. 只返回 JSON 字符串数组，例如 [\"糖尿病饮食\",\"血糖控制\"]。",
+      "SaveState": true,
+      "IsInput": false,
+      "Desc": "系统提示词，可自由修改"
+    },
+    {
+      "Type": 0,
+      "Key": "scriptText",
+      "DefaultValue": "",
+      "SaveState": true,
+      "IsInput": false,
+      "Desc": "待分析脚本"
+    },
+    {
+      "Type": 12,
+      "Key": "maxResultsPerKeyword",
+      "DefaultValue": "8",
+      "SaveState": true,
+      "IsInput": false,
+      "Desc": "每个关键词最多展示的视频数量"
+    },
+    {
+      "Type": 0,
+      "Key": "extensionId",
+      "DefaultValue": "",
+      "SaveState": true,
+      "IsInput": false,
+      "Desc": "抖音关键词搜索扩展 ID，留空自动检测"
+    },
+    {
+      "Type": 0,
+      "Key": "outputDir",
+      "DefaultValue": "D:\\chajian\\downloads",
+      "SaveState": true,
+      "IsInput": false,
+      "Desc": "视频输出目录"
+    },
+    {
+      "Type": 0,
+      "Key": "rtn",
+      "DefaultValue": "",
+      "IsOutput": false,
+      "Desc": "返回值(自动)"
+    },
+    {
+      "Type": 0,
+      "Key": "errMessage",
+      "DefaultValue": "",
+      "IsOutput": false,
+      "Desc": "错误信息(自动)"
+    },
+    {
+      "Type": 0,
+      "Key": "text",
+      "DefaultValue": "",
+      "IsOutput": false,
+      "Desc": "结果文本(自动)"
+    },
+    {
+      "Type": 0,
+      "Key": "menuKey",
+      "DefaultValue": "",
+      "IsOutput": false,
+      "Desc": "菜单参数(自动)"
+    },
+    {
+      "Type": 2,
+      "Key": "silent",
+      "DefaultValue": "true",
+      "IsInput": false,
+      "Desc": "静默参数(自动)"
+    }
+  ],
+  "Menus": {
+    "config": "[fa:Regular_Sun]设置"
+  }
+}
