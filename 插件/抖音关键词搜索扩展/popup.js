@@ -24,7 +24,8 @@ form.addEventListener("submit", async (event) => {
       options: {
         active: true,
         closeTab: false,
-        downloadVideos: true
+        downloadVideos: true,
+        skipJsonDownload: true
       }
     });
 
@@ -32,7 +33,12 @@ form.addEventListener("submit", async (event) => {
       throw new Error(response?.error || "Unknown error");
     }
 
-    setStatus(`\u5df2\u5bfc\u51fa JSON\uff1a${response.count}\uff0c\u5df2\u4e0b\u8f7d\uff1a${response.downloadedCount || 0}`);
+    const savedFilename = downloadJsonText(
+      response.jsonText || "{}",
+      response.suggestedFilename || response.filename || "douyin-export.json"
+    );
+
+    setStatus(`\u5df2\u5bfc\u51fa JSON\uff1a${response.count}\uff0c\u6587\u4ef6\uff1a${savedFilename}\uff0c\u5df2\u4e0b\u8f7d\uff1a${response.downloadedCount || 0}`);
   } catch (error) {
     console.error(error);
     setStatus("\u5bfc\u51fa JSON \u5931\u8d25");
@@ -55,4 +61,23 @@ async function initialize() {
 
 function setStatus(message) {
   status.textContent = message;
+}
+
+function downloadJsonText(text, filename) {
+  const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  const safeFilename = getBasename(filename) || "douyin-export.json";
+  anchor.href = url;
+  anchor.download = safeFilename.endsWith(".json") ? safeFilename : `${safeFilename}.json`;
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return anchor.download;
+}
+
+function getBasename(filename) {
+  return String(filename || "").split(/[\\/]/).filter(Boolean).pop() || "";
 }

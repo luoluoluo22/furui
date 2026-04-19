@@ -28,7 +28,8 @@ async function run() {
         closeTab,
         active,
         downloadVideos,
-        maxVideos
+        maxVideos,
+        skipJsonDownload: true
       }
     });
 
@@ -36,16 +37,45 @@ async function run() {
       throw new Error(response?.error || "Unknown error");
     }
 
+    const savedFilename = downloadJsonText(
+      response.jsonText || "{}",
+      response.suggestedFilename || response.filename || "douyin-export.json"
+    );
+
     statusNode.textContent = "Export completed.";
-    detailNode.textContent = `Saved ${response.count} items to ${response.filename}. Downloaded ${response.downloadedCount || 0} videos.`;
+    detailNode.textContent = `Saved ${response.count} items to ${savedFilename}. Downloaded ${response.downloadedCount || 0} videos.`;
 
     if (closeTab) {
+      await delay(500);
       await closeCurrentTab();
     }
   } catch (error) {
     statusNode.textContent = "Export failed.";
     detailNode.textContent = error instanceof Error ? error.message : String(error);
   }
+}
+
+function downloadJsonText(text, filename) {
+  const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  const safeFilename = getBasename(filename) || "douyin-export.json";
+  anchor.href = url;
+  anchor.download = safeFilename.endsWith(".json") ? safeFilename : `${safeFilename}.json`;
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return anchor.download;
+}
+
+function getBasename(filename) {
+  return String(filename || "").split(/[\\/]/).filter(Boolean).pop() || "";
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function closeCurrentTab() {

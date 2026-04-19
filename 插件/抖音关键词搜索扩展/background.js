@@ -45,7 +45,8 @@ async function exportSearchResults(rawKeyword, options = {}) {
     closeTab: options.closeTab === true,
     includeVideoDetails: options.includeVideoDetails !== false,
     downloadVideos: options.downloadVideos === true,
-    maxVideos: normalizeMaxVideos(options.maxVideos)
+    maxVideos: normalizeMaxVideos(options.maxVideos),
+    skipJsonDownload: options.skipJsonDownload === true
   };
 
   const searchUrl = `${SEARCH_BASE_URL}${encodeURIComponent(keyword)}`;
@@ -77,20 +78,26 @@ async function exportSearchResults(rawKeyword, options = {}) {
 
     const filename = buildJsonFilename(keyword);
     const jsonText = JSON.stringify(payload, null, 2);
-    const downloadUrl = `data:application/json;charset=utf-8;base64,${encodeBase64Utf8(jsonText)}`;
+    let downloadId = 0;
+    let downloadedFilename = filename;
 
-    const downloadId = await chrome.downloads.download({
-      url: downloadUrl,
-      filename,
-      saveAs: false,
-      conflictAction: "uniquify"
-    });
-    const downloadResult = await waitForDownloadCompletion(downloadId, 10000);
+    if (!normalizedOptions.skipJsonDownload) {
+      const downloadUrl = `data:application/json;charset=utf-8;base64,${encodeBase64Utf8(jsonText)}`;
+      downloadId = await chrome.downloads.download({
+        url: downloadUrl,
+        filename,
+        saveAs: false,
+        conflictAction: "uniquify"
+      });
+      const downloadResult = await waitForDownloadCompletion(downloadId, 10000);
+      downloadedFilename = downloadResult.filename || filename;
+    }
 
     return {
-      filename: downloadResult.filename || filename,
+      filename: downloadedFilename,
       suggestedFilename: filename,
       downloadId,
+      jsonText: normalizedOptions.skipJsonDownload ? jsonText : "",
       searchUrl,
       count: payload.count,
       downloadedCount: payload.results.filter((item) => item.downloaded).length,
@@ -470,7 +477,7 @@ function collectBitRateUrls(bitRates) {
 function buildJsonFilename(keyword) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const safeKeyword = sanitizePathPart(keyword) || "keyword";
-  return `douyin-json/${safeKeyword}-${timestamp}.json`;
+  return `${safeKeyword}-${timestamp}.json`;
 }
 
 function encodeBase64Utf8(value) {
