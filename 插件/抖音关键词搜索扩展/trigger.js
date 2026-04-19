@@ -1,5 +1,5 @@
 const statusNode = document.getElementById("status");
-const resultNode = document.getElementById("result");
+const detailNode = document.getElementById("detail");
 
 run();
 
@@ -13,11 +13,12 @@ async function run() {
 
   if (!keyword) {
     statusNode.textContent = "Missing keyword query parameter.";
-    resultNode.textContent = 'Example: ?keyword=%E7%B3%96%E5%B0%BF%E7%97%85';
+    detailNode.textContent = 'Example: ?keyword=%E7%B3%96%E5%B0%BF%E7%97%85';
     return;
   }
 
   statusNode.textContent = `Running export for: ${keyword}`;
+  detailNode.textContent = "Please wait while the extension collects download links.";
 
   try {
     const response = await chrome.runtime.sendMessage({
@@ -35,10 +36,26 @@ async function run() {
       throw new Error(response?.error || "Unknown error");
     }
 
-    statusNode.textContent = `Exported ${response.count} items to ${response.filename} (downloaded ${response.downloadedCount || 0})`;
-    resultNode.textContent = JSON.stringify(response, null, 2);
+    statusNode.textContent = "Export completed.";
+    detailNode.textContent = `Saved ${response.count} items to ${response.filename}. Downloaded ${response.downloadedCount || 0} videos.`;
+
+    if (closeTab) {
+      await closeCurrentTab();
+    }
   } catch (error) {
     statusNode.textContent = "Export failed.";
-    resultNode.textContent = error instanceof Error ? error.stack || error.message : String(error);
+    detailNode.textContent = error instanceof Error ? error.message : String(error);
   }
+}
+
+async function closeCurrentTab() {
+  try {
+    const tab = await chrome.tabs.getCurrent();
+    if (tab?.id) {
+      await chrome.tabs.remove(tab.id);
+      return;
+    }
+  } catch {}
+
+  window.close();
 }
