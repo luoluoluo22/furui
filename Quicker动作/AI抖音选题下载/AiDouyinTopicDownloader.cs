@@ -9,7 +9,6 @@ using System.Net;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using Quicker.Public;
 
 public static string Exec(IStepContext context)
@@ -385,10 +384,7 @@ static List<Dictionary<string, string>> ShowVideoSelection(List<Dictionary<strin
             header.Children.Add(check);
             header.Children.Add(new TextBlock { Text = "选择", VerticalAlignment = VerticalAlignment.Center });
 
-            ImageSource coverImage = CreateBitmap(Get(item, "cover"));
-            FrameworkElement visual = coverImage == null
-                ? CreateCoverPlaceholder(Get(item, "videoId"))
-                : (FrameworkElement)new Image { Width = 180, Height = 240, Stretch = Stretch.UniformToFill, Source = coverImage };
+            FrameworkElement visual = CreateCoverPreview(Get(item, "cover"), Get(item, "videoId"));
             var titleText = new TextBlock { Text = Short(Get(item, "title"), 54), TextWrapping = TextWrapping.Wrap, Height = 48, Margin = new Thickness(0, 8, 0, 4) };
             var meta = new TextBlock { Text = $"{Get(item, "sourceKeyword")} · {Get(item, "author")}", TextWrapping = TextWrapping.Wrap, Height = 36, Foreground = new SolidColorBrush(Color.FromRgb(110, 110, 110)) };
             var card = new StackPanel();
@@ -438,16 +434,45 @@ static List<Dictionary<string, string>> ShowVideoSelection(List<Dictionary<strin
     return result;
 }
 
-static ImageSource CreateBitmap(string url)
+static FrameworkElement CreateCoverPreview(string url, string videoId)
+{
+    string localPath = SaveCoverToTemp(url, videoId);
+    if (string.IsNullOrWhiteSpace(localPath))
+    {
+        return CreateCoverPlaceholder(videoId);
+    }
+
+    var browser = new WebBrowser
+    {
+        Width = 180,
+        Height = 240
+    };
+    string imageUri = new Uri(localPath).AbsoluteUri;
+    browser.NavigateToString(
+        "<!doctype html><html><head><meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\" />" +
+        "<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef1f5;}img{width:100%;height:100%;border:0;}</style>" +
+        "</head><body><img src=\"" + EscapeHtml(imageUri) + "\" /></body></html>");
+    return browser;
+}
+
+static string SaveCoverToTemp(string url, string videoId)
 {
     if (string.IsNullOrWhiteSpace(url))
     {
-        return null;
+        return "";
     }
     try
     {
+        string dir = Path.Combine(Path.GetTempPath(), "AiDouyinTopicDownloaderCovers");
+        Directory.CreateDirectory(dir);
+        string safeName = Regex.Replace(string.IsNullOrWhiteSpace(videoId) ? Guid.NewGuid().ToString("N") : videoId, "[^0-9A-Za-z_-]+", "_");
+        string path = Path.Combine(dir, safeName + ".jpg");
+        if (File.Exists(path) && new FileInfo(path).Length > 0)
+        {
+            return path;
+        }
+
         ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
-        byte[] data;
         HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
         request.Method = "GET";
         request.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
@@ -458,29 +483,15 @@ static ImageSource CreateBitmap(string url)
 
         using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
         using (Stream source = response.GetResponseStream())
-        using (var memory = new MemoryStream())
+        using (FileStream target = File.Open(path, FileMode.Create, FileAccess.Write, FileShare.Read))
         {
-            source.CopyTo(memory);
-            data = memory.ToArray();
+            source.CopyTo(target);
         }
-
-        if (data.Length == 0)
-        {
-            return null;
-        }
-
-        var bitmap = new BitmapImage();
-        bitmap.BeginInit();
-        bitmap.StreamSource = new MemoryStream(data);
-        bitmap.DecodePixelWidth = 240;
-        bitmap.CacheOption = BitmapCacheOption.OnLoad;
-        bitmap.EndInit();
-        bitmap.Freeze();
-        return bitmap;
+        return File.Exists(path) && new FileInfo(path).Length > 0 ? path : "";
     }
     catch
     {
-        return null;
+        return "";
     }
 }
 
@@ -996,6 +1007,15 @@ static string UnescapeJson(string value)
 {
     if (string.IsNullOrEmpty(value)) return "";
     return Regex.Unescape(value).Replace("\\/", "/").Replace("\\\"", "\"").Replace("\\\\", "\\");
+}
+
+static string EscapeHtml(string value)
+{
+    return (value ?? "")
+        .Replace("&", "&amp;")
+        .Replace("\"", "&quot;")
+        .Replace("<", "&lt;")
+        .Replace(">", "&gt;");
 }
 
 static string DefaultPrompt()
