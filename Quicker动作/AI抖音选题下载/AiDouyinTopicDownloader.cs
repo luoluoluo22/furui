@@ -101,7 +101,6 @@ public static string Exec(IStepContext context)
             Log("RESOLVE_EXTENSION_FAILED");
             return "ERROR: failed to resolve extension id for Douyin Keyword Search.";
         }
-        context.SetVarValue("extensionId", extensionId);
         Log($"RESOLVE_EXTENSION_DONE extensionId={extensionId}");
 
         Directory.CreateDirectory(outputDir);
@@ -355,39 +354,63 @@ static List<string> ShowKeywordSelection(List<string> keywords)
         var window = new Window
         {
             Title = "选择搜索关键词",
-            Width = 420,
+            Width = 560,
             Height = 560,
+            MinWidth = 480,
+            MinHeight = 420,
+            ResizeMode = ResizeMode.CanResize,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             Background = Brushes.White,
             FontSize = 14
         };
         var root = new DockPanel { Margin = new Thickness(20) };
-        var title = new TextBlock { Text = "AI 返回以下关键词，请勾选要抓取抖音结果的关键词：", TextWrapping = TextWrapping.Wrap, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 12) };
+        var title = new TextBlock { Text = "AI 返回以下关键词，可直接修改文本，再勾选要抓取抖音结果的关键词：", TextWrapping = TextWrapping.Wrap, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 12) };
         DockPanel.SetDock(title, Dock.Top);
         root.Children.Add(title);
 
-        var checks = new List<CheckBox>();
+        var keywordRows = new List<Tuple<CheckBox, TextBox>>();
         var stack = new StackPanel();
         foreach (string keyword in keywords)
         {
-            var check = new CheckBox { Content = keyword, IsChecked = true, Margin = new Thickness(0, 0, 0, 10) };
-            checks.Add(check);
-            stack.Children.Add(check);
+            var row = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var check = new CheckBox { IsChecked = true, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+            var box = new TextBox
+            {
+                Text = keyword ?? "",
+                Height = 32,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                Padding = new Thickness(8, 3, 8, 3)
+            };
+
+            Grid.SetColumn(check, 0);
+            Grid.SetColumn(box, 1);
+            row.Children.Add(check);
+            row.Children.Add(box);
+            keywordRows.Add(Tuple.Create(check, box));
+            stack.Children.Add(row);
         }
         root.Children.Add(new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
         DockPanel.SetDock(buttons, Dock.Bottom);
         var all = new Button { Content = "全选", Width = 72, Height = 32, Margin = new Thickness(0, 0, 8, 0) };
-        all.Click += (_, __) => checks.ForEach(c => c.IsChecked = true);
+        all.Click += (_, __) => keywordRows.ForEach(row => row.Item1.IsChecked = true);
         var none = new Button { Content = "全不选", Width = 78, Height = 32, Margin = new Thickness(0, 0, 8, 0) };
-        none.Click += (_, __) => checks.ForEach(c => c.IsChecked = false);
+        none.Click += (_, __) => keywordRows.ForEach(row => row.Item1.IsChecked = false);
         var cancel = new Button { Content = "取消", Width = 72, Height = 32, Margin = new Thickness(0, 0, 8, 0) };
         cancel.Click += (_, __) => window.Close();
         var ok = new Button { Content = "抓取结果", Width = 96, Height = 32, Background = new SolidColorBrush(Color.FromRgb(255, 92, 53)), Foreground = Brushes.White };
         ok.Click += (_, __) =>
         {
-            result = checks.Where(c => c.IsChecked == true).Select(c => Convert.ToString(c.Content)).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList();
+            result = keywordRows
+                .Where(row => row.Item1.IsChecked == true)
+                .Select(row => (row.Item2.Text ?? "").Trim())
+                .Where(text => !string.IsNullOrWhiteSpace(text))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
             window.Close();
         };
         buttons.Children.Add(all);
@@ -708,7 +731,13 @@ static string ResolveExtensionId(string configuredId)
 {
     if (!string.IsNullOrWhiteSpace(configuredId))
     {
-        return configuredId;
+        string normalized = configuredId.Trim();
+        if (IsConfiguredExtensionInstalled(normalized))
+        {
+            Log($"RESOLVE_EXTENSION_CONFIGURED_VALID extensionId={normalized}");
+            return normalized;
+        }
+        Log($"RESOLVE_EXTENSION_CONFIGURED_IGNORED extensionId={normalized}");
     }
     foreach (string prefsPath in GetBrowserPreferencePaths())
     {
@@ -724,6 +753,33 @@ static string ResolveExtensionId(string configuredId)
         }
     }
     return "";
+}
+
+static bool IsConfiguredExtensionInstalled(string configuredId)
+{
+    if (string.IsNullOrWhiteSpace(configuredId))
+    {
+        return false;
+    }
+
+    foreach (string prefsPath in GetBrowserPreferencePaths())
+    {
+        if (!File.Exists(prefsPath))
+        {
+            continue;
+        }
+
+        string raw = File.ReadAllText(prefsPath, Encoding.UTF8);
+        foreach (string installedId in FindDouyinExtensionIdsByPath(raw))
+        {
+            if (string.Equals(installedId, configuredId, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 static IEnumerable<string> GetBrowserPreferencePaths()
@@ -756,6 +812,11 @@ static IEnumerable<string> GetBrowserPreferencePaths()
 
 static string FindExtensionIdByPath(string raw)
 {
+    return FindDouyinExtensionIdsByPath(raw).FirstOrDefault() ?? "";
+}
+
+static IEnumerable<string> FindDouyinExtensionIdsByPath(string raw)
+{
     MatchCollection pathMatches = Regex.Matches(raw ?? "", "\"path\"\\s*:\\s*\"(?<path>(?:\\\\.|[^\"])*)\"", RegexOptions.Singleline);
     foreach (Match pathMatch in pathMatches)
     {
@@ -768,10 +829,9 @@ static string FindExtensionIdByPath(string raw)
         MatchCollection idMatches = Regex.Matches(beforePath, "\"(?<id>[a-p]{32})\"\\s*:\\s*\\{", RegexOptions.Singleline);
         if (idMatches.Count > 0)
         {
-            return idMatches[idMatches.Count - 1].Groups["id"].Value;
+            yield return idMatches[idMatches.Count - 1].Groups["id"].Value;
         }
     }
-    return "";
 }
 
 static bool IsDouyinExtensionPath(string extensionPath)
