@@ -9,6 +9,7 @@ using System.Net;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Quicker.Public;
 
 public static string Exec(IStepContext context)
@@ -409,7 +410,10 @@ static List<Dictionary<string, string>> ShowVideoSelection(List<Dictionary<strin
         {
             Title = "选择要下载的视频",
             Width = 980,
-            Height = 760,
+            Height = 720,
+            MinWidth = 760,
+            MinHeight = 560,
+            ResizeMode = ResizeMode.CanResize,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             Background = Brushes.White,
             FontSize = 13
@@ -423,7 +427,7 @@ static List<Dictionary<string, string>> ShowVideoSelection(List<Dictionary<strin
         root.Children.Add(title);
 
         var checks = new List<Tuple<CheckBox, Dictionary<string, string>>>();
-        var panel = new WrapPanel();
+        var panel = new WrapPanel { Orientation = Orientation.Horizontal };
         foreach (var item in items)
         {
             var check = new CheckBox { IsChecked = false, Margin = new Thickness(0, 2, 6, 0) };
@@ -455,7 +459,14 @@ static List<Dictionary<string, string>> ShowVideoSelection(List<Dictionary<strin
             border.MouseLeftButtonUp += (_, __) => check.IsChecked = !(check.IsChecked == true);
             panel.Children.Add(border);
         }
-        var scroll = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        var scroll = new ScrollViewer
+        {
+            Content = panel,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Visible,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            CanContentScroll = false,
+            Padding = new Thickness(0, 0, 12, 0)
+        };
         Grid.SetRow(scroll, 1);
         root.Children.Add(scroll);
 
@@ -492,17 +503,40 @@ static FrameworkElement CreateCoverPreview(string url, string videoId)
         return CreateCoverPlaceholder(videoId);
     }
 
-    var browser = new WebBrowser
+    var image = new Image
     {
         Width = 180,
-        Height = 240
+        Height = 240,
+        Stretch = Stretch.UniformToFill,
+        Source = LoadLocalImage(localPath)
     };
-    string imageUri = new Uri(localPath).AbsoluteUri;
-    browser.NavigateToString(
-        "<!doctype html><html><head><meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\" />" +
-        "<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef1f5;}img{width:100%;height:100%;border:0;}</style>" +
-        "</head><body><img src=\"" + EscapeHtml(imageUri) + "\" /></body></html>");
-    return browser;
+    return image.Source == null ? CreateCoverPlaceholder(videoId) : (FrameworkElement)image;
+}
+
+static ImageSource LoadLocalImage(string path)
+{
+    try
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            return null;
+        }
+
+        var bitmap = new BitmapImage();
+        bitmap.BeginInit();
+        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        bitmap.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
+        bitmap.DecodePixelWidth = 240;
+        bitmap.UriSource = new Uri(path, UriKind.Absolute);
+        bitmap.EndInit();
+        bitmap.Freeze();
+        return bitmap;
+    }
+    catch (Exception ex)
+    {
+        Log("COVER_LOCAL_IMAGE_ERROR " + ex.Message);
+        return null;
+    }
 }
 
 static string SaveCoverToTemp(string url, string videoId)
