@@ -13,6 +13,7 @@ using Quicker.Public;
 
 static readonly string LogDirectory = @"D:\chajian\Quicker动作\AI抖音选题下载";
 static readonly string LogFilePath = Path.Combine(LogDirectory, "AiDouyinTopicDownloader.log");
+static readonly string LocalSettingsPath = Path.Combine(LogDirectory, "AiDouyinTopicDownloader.local");
 
 public static string Exec(IStepContext context)
 {
@@ -27,6 +28,14 @@ public static string Exec(IStepContext context)
         string outputDir = ReadVar(context, "outputDir", @"D:\chajian\downloads");
         string extensionId = ReadVar(context, "extensionId", "");
         int maxPerKeyword = Math.Max(1, ToInt(context.GetVarValue("maxResultsPerKeyword"), 8));
+
+        Dictionary<string, string> localSettings = LoadLocalSettings();
+        apiUrl = GetLocalSetting(localSettings, "apiBaseUrl", apiUrl);
+        apiKey = GetLocalSetting(localSettings, "apiKey", apiKey);
+        model = GetLocalSetting(localSettings, "model", model);
+        prompt = GetLocalSetting(localSettings, "systemPrompt", prompt);
+        outputDir = GetLocalSetting(localSettings, "outputDir", outputDir);
+        maxPerKeyword = Math.Max(1, ToInt(GetLocalSetting(localSettings, "maxResultsPerKeyword", Convert.ToString(maxPerKeyword)), maxPerKeyword));
         Log($"CONFIG_LOADED apiUrl={apiUrl}; model={model}; outputDir={outputDir}; maxPerKeyword={maxPerKeyword}; hasApiKey={!string.IsNullOrWhiteSpace(apiKey)}");
 
         var setup = ShowSetupDialog(apiUrl, apiKey, model, prompt, script, outputDir, maxPerKeyword);
@@ -59,6 +68,9 @@ public static string Exec(IStepContext context)
         {
             outputDir = @"D:\chajian\downloads";
         }
+
+        SaveLocalSettings(apiUrl, apiKey, model, prompt, outputDir, maxPerKeyword);
+        Log("LOCAL_SETTINGS_SAVED");
 
         context.SetVarValue("apiBaseUrl", apiUrl);
         context.SetVarValue("apiKey", apiKey);
@@ -371,6 +383,8 @@ static List<string> ShowKeywordSelection(List<string> keywords)
         DockPanel.SetDock(buttons, Dock.Bottom);
         var all = new Button { Content = "全选", Width = 72, Height = 32, Margin = new Thickness(0, 0, 8, 0) };
         all.Click += (_, __) => checks.ForEach(c => c.IsChecked = true);
+        var none = new Button { Content = "全不选", Width = 78, Height = 32, Margin = new Thickness(0, 0, 8, 0) };
+        none.Click += (_, __) => checks.ForEach(c => c.IsChecked = false);
         var cancel = new Button { Content = "取消", Width = 72, Height = 32, Margin = new Thickness(0, 0, 8, 0) };
         cancel.Click += (_, __) => window.Close();
         var ok = new Button { Content = "抓取结果", Width = 96, Height = 32, Background = new SolidColorBrush(Color.FromRgb(255, 92, 53)), Foreground = Brushes.White };
@@ -380,6 +394,7 @@ static List<string> ShowKeywordSelection(List<string> keywords)
             window.Close();
         };
         buttons.Children.Add(all);
+        buttons.Children.Add(none);
         buttons.Children.Add(cancel);
         buttons.Children.Add(ok);
         root.Children.Add(buttons);
@@ -403,9 +418,12 @@ static List<Dictionary<string, string>> ShowVideoSelection(List<Dictionary<strin
             Background = Brushes.White,
             FontSize = 13
         };
-        var root = new DockPanel { Margin = new Thickness(18) };
+        var root = new Grid { Margin = new Thickness(18) };
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var title = new TextBlock { Text = $"共抓取到 {items.Count} 个视频结果，请勾选封面后下载：", FontWeight = FontWeights.SemiBold, FontSize = 16, Margin = new Thickness(0, 0, 0, 12) };
-        DockPanel.SetDock(title, Dock.Top);
+        Grid.SetRow(title, 0);
         root.Children.Add(title);
 
         var checks = new List<Tuple<CheckBox, Dictionary<string, string>>>();
@@ -441,10 +459,12 @@ static List<Dictionary<string, string>> ShowVideoSelection(List<Dictionary<strin
             border.MouseLeftButtonUp += (_, __) => check.IsChecked = !(check.IsChecked == true);
             panel.Children.Add(border);
         }
-        root.Children.Add(new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        var scroll = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        Grid.SetRow(scroll, 1);
+        root.Children.Add(scroll);
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
-        DockPanel.SetDock(buttons, Dock.Bottom);
+        Grid.SetRow(buttons, 2);
         var all = new Button { Content = "全选", Width = 78, Height = 34, Margin = new Thickness(0, 0, 8, 0) };
         all.Click += (_, __) => checks.ForEach(t => t.Item1.IsChecked = true);
         var clear = new Button { Content = "清空", Width = 78, Height = 34, Margin = new Thickness(0, 0, 8, 0) };
@@ -1014,6 +1034,83 @@ static string ReadVar(IStepContext context, string key, string fallback)
 {
     string value = context.GetVarValue(key) as string;
     return string.IsNullOrWhiteSpace(value) ? fallback : value;
+}
+
+static Dictionary<string, string> LoadLocalSettings()
+{
+    var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    try
+    {
+        if (!Directory.Exists(LogDirectory) || !File.Exists(LocalSettingsPath))
+        {
+            return values;
+        }
+
+        foreach (string line in File.ReadAllLines(LocalSettingsPath, Encoding.UTF8))
+        {
+            int index = line.IndexOf('=');
+            if (index <= 0)
+            {
+                continue;
+            }
+
+            string key = line.Substring(0, index).Trim();
+            string encoded = line.Substring(index + 1).Trim();
+            if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(encoded))
+            {
+                continue;
+            }
+
+            values[key] = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
+        }
+        Log($"LOCAL_SETTINGS_LOADED keys={values.Count}");
+    }
+    catch (Exception ex)
+    {
+        Log("LOCAL_SETTINGS_LOAD_ERROR " + ex.Message);
+    }
+    return values;
+}
+
+static string GetLocalSetting(Dictionary<string, string> values, string key, string fallback)
+{
+    if (values != null && values.ContainsKey(key) && !string.IsNullOrWhiteSpace(values[key]))
+    {
+        return values[key];
+    }
+    return fallback;
+}
+
+static void SaveLocalSettings(string apiUrl, string apiKey, string model, string prompt, string outputDir, int maxPerKeyword)
+{
+    try
+    {
+        if (!Directory.Exists(LogDirectory))
+        {
+            return;
+        }
+
+        var lines = new List<string>
+        {
+            SettingLine("apiBaseUrl", apiUrl),
+            SettingLine("apiKey", apiKey),
+            SettingLine("model", model),
+            SettingLine("systemPrompt", prompt),
+            SettingLine("outputDir", outputDir),
+            SettingLine("maxResultsPerKeyword", Convert.ToString(maxPerKeyword))
+        };
+        File.WriteAllLines(LocalSettingsPath, lines, new UTF8Encoding(false));
+    }
+    catch (Exception ex)
+    {
+        Log("LOCAL_SETTINGS_SAVE_ERROR " + ex.Message);
+    }
+}
+
+static string SettingLine(string key, string value)
+{
+    string encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(value ?? ""));
+    return key + "=" + encoded;
 }
 
 static int ToInt(object value, int fallback)
