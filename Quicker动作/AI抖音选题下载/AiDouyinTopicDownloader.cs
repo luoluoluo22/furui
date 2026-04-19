@@ -385,12 +385,15 @@ static List<Dictionary<string, string>> ShowVideoSelection(List<Dictionary<strin
             header.Children.Add(check);
             header.Children.Add(new TextBlock { Text = "选择", VerticalAlignment = VerticalAlignment.Center });
 
-            var image = new Image { Width = 180, Height = 240, Stretch = Stretch.UniformToFill, Source = CreateBitmap(Get(item, "cover")) };
+            ImageSource coverImage = CreateBitmap(Get(item, "cover"));
+            FrameworkElement visual = coverImage == null
+                ? CreateCoverPlaceholder(Get(item, "videoId"))
+                : (FrameworkElement)new Image { Width = 180, Height = 240, Stretch = Stretch.UniformToFill, Source = coverImage };
             var titleText = new TextBlock { Text = Short(Get(item, "title"), 54), TextWrapping = TextWrapping.Wrap, Height = 48, Margin = new Thickness(0, 8, 0, 4) };
             var meta = new TextBlock { Text = $"{Get(item, "sourceKeyword")} · {Get(item, "author")}", TextWrapping = TextWrapping.Wrap, Height = 36, Foreground = new SolidColorBrush(Color.FromRgb(110, 110, 110)) };
             var card = new StackPanel();
             card.Children.Add(header);
-            card.Children.Add(image);
+            card.Children.Add(visual);
             card.Children.Add(titleText);
             card.Children.Add(meta);
 
@@ -443,12 +446,34 @@ static ImageSource CreateBitmap(string url)
     }
     try
     {
+        ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+        byte[] data;
+        HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+        request.Method = "GET";
+        request.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+        request.Referer = "https://www.douyin.com/";
+        request.Accept = "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8";
+        request.Timeout = 12000;
+        request.ReadWriteTimeout = 12000;
+
+        using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+        using (Stream source = response.GetResponseStream())
+        using (var memory = new MemoryStream())
+        {
+            source.CopyTo(memory);
+            data = memory.ToArray();
+        }
+
+        if (data.Length == 0)
+        {
+            return null;
+        }
+
         var bitmap = new BitmapImage();
         bitmap.BeginInit();
-        bitmap.UriSource = new Uri(url, UriKind.Absolute);
+        bitmap.StreamSource = new MemoryStream(data);
         bitmap.DecodePixelWidth = 240;
         bitmap.CacheOption = BitmapCacheOption.OnLoad;
-        bitmap.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
         bitmap.EndInit();
         bitmap.Freeze();
         return bitmap;
@@ -457,6 +482,28 @@ static ImageSource CreateBitmap(string url)
     {
         return null;
     }
+}
+
+static FrameworkElement CreateCoverPlaceholder(string videoId)
+{
+    return new Border
+    {
+        Width = 180,
+        Height = 240,
+        Background = new SolidColorBrush(Color.FromRgb(238, 241, 245)),
+        BorderBrush = new SolidColorBrush(Color.FromRgb(220, 225, 232)),
+        BorderThickness = new Thickness(1),
+        Child = new TextBlock
+        {
+            Text = "封面加载失败\n" + videoId,
+            TextAlignment = TextAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(12),
+            Foreground = new SolidColorBrush(Color.FromRgb(110, 120, 130))
+        }
+    };
 }
 
 static List<string> CallAiForKeywords(string apiUrl, string apiKey, string model, string prompt, string script)
