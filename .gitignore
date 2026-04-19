@@ -1,0 +1,41 @@
+.codex/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+.env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime data and downloads
+cache/
+Data/
+Download/
+downloads/
+下载结果/
+*.db
+*.sqlite
+*.sqlite3
+*.mp4
+*.log
+*.tmp
+*.temp
+
+# Archives and generated packages
+压缩包/
+*.zip
+*.rar
+*.7z
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

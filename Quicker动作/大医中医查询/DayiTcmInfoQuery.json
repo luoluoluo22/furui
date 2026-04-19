@@ -1,0 +1,134 @@
+﻿{
+  "ActionId": "b3cbac5c-8c2e-4f89-9a68-9f6a089a9d45",
+  "SharedActionId": "00000000-0000-0000-0000-000000000000",
+  "Title": "中医药信息查询",
+  "Description": "输入关键词并选择疾病、药品或中药材分类，查询大医网并提取对应栏目内容。",
+  "Keywords": "dayi,中医药,疾病,药品,中药材,鉴别诊断,适应症,炮制方法,查询",
+  "ChangeLog": "v1.1.0 增加疾病、药品、中药材分类；增加原始内容查看与复制结果按钮。\nv1.0.0 初始版本：支持关键词搜索疾病并提取鉴别诊断小标题。",
+  "ShareUrl": "",
+  "Icon": "fa:Solid_Search:#207E59",
+  "Variables": [
+    {
+      "Type": 0,
+      "Key": "keyword",
+      "DefaultValue": "",
+      "SaveState": true,
+      "IsInput": false,
+      "Desc": "查询关键词，例如：糖尿病、山药、西地那非"
+    },
+    {
+      "Type": 0,
+      "Key": "rtn",
+      "DefaultValue": "",
+      "IsOutput": false,
+      "Desc": "返回值(自动)"
+    },
+    {
+      "Type": 0,
+      "Key": "errMessage",
+      "DefaultValue": "",
+      "IsOutput": false,
+      "Desc": "错误信息(自动)"
+    },
+    {
+      "Type": 0,
+      "Key": "text",
+      "DefaultValue": "",
+      "IsOutput": false,
+      "Desc": "结果文本(自动)"
+    },
+    {
+      "Type": 0,
+      "Key": "menuKey",
+      "DefaultValue": "",
+      "IsOutput": false,
+      "Desc": "菜单参数(自动)"
+    },
+    {
+      "Type": 2,
+      "Key": "silent",
+      "DefaultValue": "true",
+      "IsInput": false,
+      "Desc": "静默参数(自动)"
+    },
+    {
+      "Type": 0,
+      "Key": "outputFormat",
+      "DefaultValue": "",
+      "SaveState": true,
+      "IsInput": false,
+      "Desc": "旧版输出模板，保留兼容。新版请使用三个分类模板变量。"
+    },
+    {
+      "Type": 0,
+      "Key": "category",
+      "DefaultValue": "疾病",
+      "SaveState": true,
+      "IsInput": false,
+      "Desc": "查询分类：疾病、药品、中药材"
+    },
+    {
+      "Type": 0,
+      "Key": "rawContent",
+      "DefaultValue": "",
+      "IsOutput": false,
+      "Desc": "原始提取内容(自动)"
+    },
+    {
+      "Type": 0,
+      "Key": "searchUrl",
+      "DefaultValue": "",
+      "IsOutput": false,
+      "Desc": "搜索页地址(自动)"
+    },
+    {
+      "Type": 0,
+      "Key": "detailUrl",
+      "DefaultValue": "",
+      "IsOutput": false,
+      "Desc": "详情页地址(自动)"
+    },
+    {
+      "Type": 0,
+      "Key": "matchedTitle",
+      "DefaultValue": "",
+      "IsOutput": false,
+      "Desc": "命中的标题(自动)"
+    },
+    {
+      "Type": 0,
+      "Key": "history",
+      "DefaultValue": "",
+      "SaveState": true,
+      "IsInput": false,
+      "Desc": "查询历史记录，保存分类、关键词和提取内容(自动保存，最多50条)"
+    },
+    {
+      "Type": 0,
+      "Key": "diseaseFormat",
+      "DefaultValue": "{keyword}鉴别诊断：需与{items}相鉴别",
+      "SaveState": true,
+      "IsInput": false,
+      "Desc": "疾病输出模板"
+    },
+    {
+      "Type": 0,
+      "Key": "medicalFormat",
+      "DefaultValue": "{keyword}适应症：{content}",
+      "SaveState": true,
+      "IsInput": false,
+      "Desc": "药品输出模板"
+    },
+    {
+      "Type": 0,
+      "Key": "cmedicalFormat",
+      "DefaultValue": "{keyword}炮制：{content}",
+      "SaveState": true,
+      "IsInput": false,
+      "Desc": "中药材输出模板"
+    }
+  ],
+  "Menus": {
+    "config": "[fa:Regular_Sun]设置"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "Douyin Keyword Search",
+  "version": "1.0.0",
+  "description": "Externally trigger Douyin search and export results as JSON.",
+  "permissions": [
+    "cookies",
+    "downloads",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.douyin.com/*",
+    "https://*.douyinvod.com/*"
+  ],
+  "externally_connectable": {
+    "matches": [
+      "*://*/*"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.douyin.com/search/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "trigger.html",
+        "trigger.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Douyin Search",
+    "default_popup": "popup.html"
+  }
+}
